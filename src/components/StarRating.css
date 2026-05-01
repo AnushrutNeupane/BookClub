@@ -1,0 +1,33 @@
+.star-rating {
+  display: flex;
+  gap: 2px;
+}
+
+.star {
+  background: none;
+  border: none;
+  color: #3a3a5a;
+  cursor: default;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.1s, transform 0.1s;
+}
+
+.star.filled {
+  color: #f5a623;
+}
+
+.star-rating.interactive .star {
+  cursor: pointer;
+}
+
+.star-rating.interactive .star:hover,
+.star-rating.interactive .star:focus {
+  transform: scale(1.2);
+  outline: none;
+}
+
+/* Sizes */
+.star-rating--sm .star { font-size: 0.9rem; }
+.star-rating--md .star { font-size: 1.4rem; }
+.star-rating--lg .star { font-size: 1.8rem; }
