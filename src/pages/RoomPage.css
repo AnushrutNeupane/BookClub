@@ -307,3 +307,34 @@
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+@media (max-width: 600px) {
+  .room-page {
+    /* header ~65px + bottom nav ~64px */
+    height: calc(100vh - 65px - 64px);
+  }
+
+  .room-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .room-title {
+    font-size: 1rem;
+  }
+
+  .message {
+    max-width: 85%;
+  }
+
+  .username-modal {
+    padding: 24px 20px;
+    margin: 16px;
+  }
+}
+
+.message-author--self {
+  color: #e94560;
+  font-size: 0.78rem;
+  font-weight: 600;
+}

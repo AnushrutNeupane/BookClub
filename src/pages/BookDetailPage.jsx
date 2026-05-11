@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useLibrary } from '../hooks/useLibrary'
 import { useReviews } from '../hooks/useReviews'
 import { useReadingStatus, STATUSES } from '../hooks/useReadingStatus'
+import { useUsername } from '../hooks/useUsername'
+import { usePrivateRooms, useBookRooms } from '../hooks/usePrivateRooms'
 import { cachedFetch } from '../utils/cache'
 import StarRating from '../components/StarRating'
 import './BookDetailPage.css'
@@ -116,11 +118,60 @@ function BookDetailPage() {
   const navigate = useNavigate()
   const { addBook, removeBook, isInLibrary } = useLibrary()
   const { getStatus, setStatus, clearStatus } = useReadingStatus()
+  const { username } = useUsername()
+  const { myRooms, createRoom, joinByCode } = usePrivateRooms(username)
+  const allBookRooms = useBookRooms(workId)
   const inLibrary = isInLibrary(workId)
   const currentStatus = getStatus(workId)
   const [book, setBook] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // Private room modal state
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [roomName, setRoomName] = useState('')
+  const [joinCode, setJoinCode] = useState('')
+  const [roomActionError, setRoomActionError] = useState('')
+  const [roomActionLoading, setRoomActionLoading] = useState(false)
+
+  // Split rooms: joined vs locked
+  const joinedRooms = allBookRooms.filter((r) => r.members?.includes(username))
+  const lockedRooms = allBookRooms.filter((r) => !r.members?.includes(username))
+
+  const handleCreateRoom = async () => {
+    if (!roomName.trim()) return
+    if (!username) { setRoomActionError('Set a username first (join any discussion room to set one)'); return }
+    setRoomActionLoading(true)
+    setRoomActionError('')
+    try {
+      const { id } = await createRoom({ bookWorkId: workId, bookTitle: book.title, roomName: roomName.trim(), username })
+      setShowCreateModal(false)
+      setRoomName('')
+      navigate(`/private-room/${id}`)
+    } catch {
+      setRoomActionError('Failed to create room. Please try again.')
+    } finally {
+      setRoomActionLoading(false)
+    }
+  }
+
+  const handleJoinRoom = async () => {
+    if (!joinCode.trim()) return
+    if (!username) { setRoomActionError('Set a username first (join any discussion room to set one)'); return }
+    setRoomActionLoading(true)
+    setRoomActionError('')
+    try {
+      const room = await joinByCode(joinCode, username)
+      setShowJoinModal(false)
+      setJoinCode('')
+      navigate(`/private-room/${room.id}`)
+    } catch (e) {
+      setRoomActionError(e.message || 'Invalid invite code.')
+    } finally {
+      setRoomActionLoading(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -354,9 +405,102 @@ function BookDetailPage() {
 
           <DescriptionBlock description={book.description} />
 
+          {/* Private rooms */}
+          <div className="rooms-section">
+            <h2 className="section-heading">Private Rooms</h2>
+
+            {joinedRooms.length > 0 && (
+              <div className="private-room-list">
+                {joinedRooms.map((room) => (
+                  <button
+                    key={room.id}
+                    className="private-room-row"
+                    onClick={() => navigate(`/private-room/${room.id}`)}
+                  >
+                    <span className="private-room-icon">🔒</span>
+                    <span className="private-room-name">{room.name}</span>
+                    <span className="private-room-members">{room.members?.length ?? 1} member{room.members?.length !== 1 ? 's' : ''}</span>
+                    <span className="room-card-join">Enter →</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {lockedRooms.length > 0 && (
+              <div className="private-room-list">
+                {lockedRooms.map((room) => (
+                  <div key={room.id} className="private-room-row private-room-row--locked">
+                    <span className="private-room-icon">🔒</span>
+                    <span className="private-room-name">{room.name}</span>
+                    <span className="private-room-members">{room.members?.length ?? 1} member{room.members?.length !== 1 ? 's' : ''}</span>
+                    <span className="private-room-locked-label">Members only</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="private-room-actions">
+              <button className="private-room-btn" onClick={() => { setShowCreateModal(true); setRoomActionError('') }}>
+                + Create Private Room
+              </button>
+              <button className="private-room-btn private-room-btn--secondary" onClick={() => { setShowJoinModal(true); setRoomActionError('') }}>
+                Enter Invite Code
+              </button>
+            </div>
+          </div>
+
           {inLibrary && <ReviewBlock workId={workId} />}
         </div>
       </div>
+
+      {/* Create private room modal */}
+      {showCreateModal && (
+        <div className="username-overlay" onClick={() => setShowCreateModal(false)}>
+          <div className="username-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Create Private Room</h2>
+            <p>Give your room a name. Share the invite code with friends.</p>
+            <input
+              className="username-input"
+              placeholder="Room name (e.g. Book Club with Friends)"
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateRoom()}
+              autoFocus
+              maxLength={48}
+            />
+            {roomActionError && <p className="room-action-error">{roomActionError}</p>}
+            <button className="username-save-btn" onClick={handleCreateRoom} disabled={!roomName.trim() || roomActionLoading}>
+              {roomActionLoading ? 'Creating…' : 'Create Room'}
+            </button>
+            <button className="review-cancel-btn" onClick={() => setShowCreateModal(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Join private room modal */}
+      {showJoinModal && (
+        <div className="username-overlay" onClick={() => setShowJoinModal(false)}>
+          <div className="username-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Join Private Room</h2>
+            <p>Enter the 6-character invite code shared with you.</p>
+            <input
+              className="username-input"
+              placeholder="Invite code (e.g. XK9F2A)"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
+              autoFocus
+              maxLength={6}
+              style={{ letterSpacing: '3px', fontFamily: 'monospace', fontSize: '1.2rem' }}
+            />
+            {roomActionError && <p className="room-action-error">{roomActionError}</p>}
+            <button className="username-save-btn" onClick={handleJoinRoom} disabled={joinCode.length < 6 || roomActionLoading}>
+              {roomActionLoading ? 'Joining…' : 'Join Room'}
+            </button>
+            <button className="review-cancel-btn" onClick={() => setShowJoinModal(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -7,6 +7,7 @@ import {
 import { db } from '../firebase'
 import { useUsername } from '../hooks/useUsername'
 import { useReadingStatus, STATUSES } from '../hooks/useReadingStatus'
+import { UserName } from '../components/UserProfilePopup'
 import './RoomPage.css'
 
 function formatTime(ts) {
@@ -57,6 +58,7 @@ function RoomPage() {
   const [sending, setSending] = useState(false)
   const [bookTitle, setBookTitle] = useState('')
   const bottomRef = useRef(null)
+  const inputRef = useRef(null)
 
   const statusInfo = STATUSES.find((s) => s.key === status)
   const userStatus = getStatus(workId)
@@ -102,6 +104,7 @@ function RoomPage() {
       console.error('Failed to send message:', e)
     } finally {
       setSending(false)
+      inputRef.current?.focus()
     }
   }
 
@@ -188,7 +191,11 @@ function RoomPage() {
             className={`message ${msg.username === username ? 'message--own' : ''}`}
           >
             <div className="message-meta">
-              <span className="message-author">{msg.username}</span>
+              <UserName
+                username={msg.username}
+                workId={workId}
+                isSelf={msg.username === username}
+              />
               <span className="message-time">{formatTime(msg.createdAt)}</span>
             </div>
             <div className="message-bubble">
@@ -201,6 +208,7 @@ function RoomPage() {
 
       <div className="room-input-bar">
         <input
+          ref={inputRef}
           className="room-input"
           type="text"
           placeholder="Write a message..."

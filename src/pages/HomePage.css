@@ -155,3 +155,22 @@
   color: #606080;
   font-style: italic;
 }
+
+@media (max-width: 600px) {
+  .home-page {
+    gap: 32px;
+  }
+
+  .home-hero {
+    padding: 28px 20px;
+    border-radius: 12px;
+  }
+
+  .hero-title {
+    font-size: 1.5rem;
+  }
+
+  .hero-subtitle {
+    font-size: 0.95rem;
+  }
+}

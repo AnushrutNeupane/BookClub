@@ -168,3 +168,14 @@
   border-color: #e94560;
   color: #e94560;
 }
+
+@media (max-width: 600px) {
+  .lib-card-info {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .lib-remove-btn {
+    align-self: flex-start;
+  }
+}
