@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useReviews } from '../hooks/useReviews'
+import { getGoogleBooksCover } from '../utils/getBookCover'
 import StarRating from './StarRating'
 import './BookCard.css'
 
@@ -97,6 +98,7 @@ function BookCard({ book }) {
   const navigate = useNavigate()
   const { getReview } = useReviews()
   const [anchorRect, setAnchorRect] = useState(null)
+  const [coverUrl, setCoverUrl] = useState(null)
   const cardRef = useRef(null)
   const hoverTimer = useRef(null)
 
@@ -109,10 +111,20 @@ function BookCard({ book }) {
     first_publish_year,
   } = book
 
-  const coverUrl = cover_i ? `${COVER_BASE}/${cover_i}-M.jpg` : null
+  const olCoverUrl = cover_i ? `${COVER_BASE}/${cover_i}-M.jpg` : null
   const authors = author_name?.slice(0, 2).join(', ') ?? 'Unknown Author'
   const workId = key?.split('/').pop()
   const review = workId ? getReview(workId) : null
+
+  // Fetch Google Books cover, fall back to Open Library
+  useEffect(() => {
+    let cancelled = false
+    setCoverUrl(olCoverUrl) // show OL cover immediately while fetching
+    getGoogleBooksCover(title, author_name?.[0]).then((url) => {
+      if (!cancelled) setCoverUrl(url ?? olCoverUrl)
+    })
+    return () => { cancelled = true }
+  }, [title, author_name?.[0], cover_i])
 
   const handleClick = () => {
     if (workId) navigate(`/book/${workId}`)

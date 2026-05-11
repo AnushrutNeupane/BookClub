@@ -212,12 +212,20 @@ function BookDetailPage() {
             const gbQuery = encodeURIComponent(titleForQuery)
             const apiKey = import.meta.env.VITE_GOOGLE_BOOKS_API
             const data = await cachedFetch(
-              `https://www.googleapis.com/books/v1/volumes?q=${gbQuery}&langRestrict=en&maxResults=3&fields=items(volumeInfo(description))&key=${apiKey}`
+              `https://www.googleapis.com/books/v1/volumes?q=${gbQuery}&langRestrict=en&maxResults=3&fields=items(volumeInfo(description,imageLinks))&key=${apiKey}`
             )
             const match = data.items?.find((item) => item.volumeInfo?.description)
-            return match?.volumeInfo?.description ?? null
+            return {
+              description: match?.volumeInfo?.description ?? null,
+              coverUrl: (() => {
+                const links = match?.volumeInfo?.imageLinks
+                const raw = links?.extraLarge ?? links?.large ?? links?.medium ?? links?.thumbnail ?? null
+                if (!raw) return null
+                return raw.replace('http://', 'https://').replace('&edge=curl', '').replace('zoom=1', 'zoom=0')
+              })(),
+            }
           } catch {
-            return null
+            return { description: null, coverUrl: null }
           }
         })()
 
@@ -227,7 +235,9 @@ function BookDetailPage() {
         if (cancelled) return
 
         const authorNames = results.slice(0, authorRefs.slice(0, 3).length).filter(Boolean)
-        let description = results[results.length - 1]
+        const gbResult = results[results.length - 1]
+        let description = gbResult?.description ?? null
+        const gbCoverUrl = gbResult?.coverUrl ?? null
 
         // Fall back to Open Library description
         if (!description) {
@@ -246,6 +256,7 @@ function BookDetailPage() {
           title: workData.title,
           description,
           coverId: workData.covers?.[0] ?? null,
+          gbCoverUrl,
           subjects: workData.subjects?.slice(0, 8) ?? [],
           firstPublishYear: workData.first_publish_date ?? null,
           pageCount,
@@ -289,9 +300,9 @@ function BookDetailPage() {
     )
   }
 
-  const coverUrl = book.coverId
-    ? `${COVER_BASE}/${book.coverId}-L.jpg`
-    : null
+  // Prefer Google Books cover (higher quality), fall back to Open Library
+  const coverUrl = book.gbCoverUrl
+    ?? (book.coverId ? `${COVER_BASE}/${book.coverId}-L.jpg` : null)
 
   return (
     <div className="detail-page">
