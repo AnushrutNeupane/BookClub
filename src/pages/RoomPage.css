@@ -338,3 +338,24 @@
   font-size: 0.78rem;
   font-weight: 600;
 }
+
+/* Message delete button — only visible on hover */
+.message-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  opacity: 0;
+  padding: 0 2px;
+  transition: opacity 0.15s;
+  line-height: 1;
+  color: #606080;
+}
+
+.message:hover .message-delete-btn {
+  opacity: 1;
+}
+
+.message-delete-btn:hover {
+  color: #e94560;
+}

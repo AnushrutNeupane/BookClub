@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  collection, addDoc, onSnapshot,
-  query, orderBy, serverTimestamp,
+  collection, addDoc, onSnapshot, deleteDoc,
+  query, orderBy, serverTimestamp, doc,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useUsername } from '../hooks/useUsername'
 import { useReadingStatus, STATUSES } from '../hooks/useReadingStatus'
+import { useLibrary } from '../hooks/useLibrary'
 import { UserName } from '../components/UserProfilePopup'
+import { autoAddBook } from '../utils/autoAddBook'
 import './RoomPage.css'
 
 function formatTime(ts) {
@@ -53,6 +55,7 @@ function RoomPage() {
   const navigate = useNavigate()
   const { username, setUsername } = useUsername()
   const { getStatus } = useReadingStatus()
+  const { addBook, isInLibrary } = useLibrary()
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
@@ -71,6 +74,13 @@ function RoomPage() {
     const stored = sessionStorage.getItem(`book_title_${workId}`)
     if (stored) setBookTitle(stored)
   }, [workId])
+
+  // Auto-add book to library when entering the room
+  useEffect(() => {
+    if (!username || !workId) return
+    const title = sessionStorage.getItem(`book_title_${workId}`) ?? ''
+    autoAddBook(workId, title, { isInLibrary, addBook })
+  }, [username, workId])
 
   // Subscribe to messages for this status room
   useEffect(() => {
@@ -105,6 +115,14 @@ function RoomPage() {
     } finally {
       setSending(false)
       inputRef.current?.focus()
+    }
+  }
+
+  const deleteMessage = async (msgId) => {
+    try {
+      await deleteDoc(doc(db, 'rooms', workId, status, msgId))
+    } catch (e) {
+      console.error('Failed to delete message:', e)
     }
   }
 
@@ -185,24 +203,36 @@ function RoomPage() {
             <p>No messages yet. Start the discussion!</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`message ${msg.username === username ? 'message--own' : ''}`}
-          >
-            <div className="message-meta">
-              <UserName
-                username={msg.username}
-                workId={workId}
-                isSelf={msg.username === username}
-              />
-              <span className="message-time">{formatTime(msg.createdAt)}</span>
+        {messages.map((msg) => {
+          const isOwn = msg.username === username
+          return (
+            <div
+              key={msg.id}
+              className={`message ${isOwn ? 'message--own' : ''}`}
+            >
+              <div className="message-meta">
+                <UserName
+                  username={msg.username}
+                  workId={workId}
+                  isSelf={isOwn}
+                />
+                <span className="message-time">{formatTime(msg.createdAt)}</span>
+                {isOwn && (
+                  <button
+                    className="message-delete-btn"
+                    onClick={() => deleteMessage(msg.id)}
+                    title="Delete message"
+                  >
+                    🗑
+                  </button>
+                )}
+              </div>
+              <div className="message-bubble">
+                <p>{msg.text}</p>
+              </div>
             </div>
-            <div className="message-bubble">
-              <p>{msg.text}</p>
-            </div>
-          </div>
-        ))}
+          )
+        })}
         <div ref={bottomRef} />
       </div>
 
@@ -216,10 +246,11 @@ function RoomPage() {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
           maxLength={1000}
-          disabled={sending}
+          autoFocus
         />
         <button
           className="room-send-btn"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={sendMessage}
           disabled={!text.trim() || sending}
         >

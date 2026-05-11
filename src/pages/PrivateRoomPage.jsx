@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  collection, addDoc, onSnapshot,
+  collection, addDoc, onSnapshot, deleteDoc,
   query, orderBy, serverTimestamp, doc, onSnapshot as onSnap,
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import { useUsername } from '../hooks/useUsername'
 import { usePrivateRooms } from '../hooks/usePrivateRooms'
+import { useLibrary } from '../hooks/useLibrary'
 import { UserName } from '../components/UserProfilePopup'
+import { autoAddBook } from '../utils/autoAddBook'
 import './RoomPage.css'
 import './PrivateRoomPage.css'
 
@@ -54,6 +56,7 @@ function PrivateRoomPage() {
   const navigate = useNavigate()
   const { username, setUsername } = useUsername()
   const { kickMember, deleteRoom } = usePrivateRooms(username)
+  const { addBook, isInLibrary } = useLibrary()
   const [room, setRoom] = useState(null)
   const [messages, setMessages] = useState([])
   const [text, setText] = useState('')
@@ -102,6 +105,12 @@ function PrivateRoomPage() {
     return unsub
   }, [room, roomId])
 
+  // Auto-add book to library when room loads
+  useEffect(() => {
+    if (!room || !username) return
+    autoAddBook(room.bookWorkId, room.bookTitle, { isInLibrary, addBook })
+  }, [room?.bookWorkId, username])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -132,6 +141,14 @@ function PrivateRoomPage() {
   const handleDeleteRoom = async () => {
     await deleteRoom(roomId)
     navigate(-1)
+  }
+
+  const deleteMessage = async (msgId) => {
+    try {
+      await deleteDoc(doc(db, 'privateRooms', roomId, 'messages', msgId))
+    } catch (e) {
+      console.error('Failed to delete message:', e)
+    }
   }
 
   if (!username) return <UsernamePrompt onSave={setUsername} />
@@ -247,24 +264,36 @@ function PrivateRoomPage() {
             <p>No messages yet. Start the discussion!</p>
           </div>
         )}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`message ${msg.username === username ? 'message--own' : ''}`}
-          >
-            <div className="message-meta">
-              <UserName
-                username={msg.username}
-                workId={room?.bookWorkId}
-                isSelf={msg.username === username}
-              />
-              <span className="message-time">{formatTime(msg.createdAt)}</span>
+        {messages.map((msg) => {
+          const isOwn = msg.username === username
+          return (
+            <div
+              key={msg.id}
+              className={`message ${isOwn ? 'message--own' : ''}`}
+            >
+              <div className="message-meta">
+                <UserName
+                  username={msg.username}
+                  workId={room?.bookWorkId}
+                  isSelf={isOwn}
+                />
+                <span className="message-time">{formatTime(msg.createdAt)}</span>
+                {isOwn && (
+                  <button
+                    className="message-delete-btn"
+                    onClick={() => deleteMessage(msg.id)}
+                    title="Delete message"
+                  >
+                    🗑
+                  </button>
+                )}
+              </div>
+              <div className="message-bubble">
+                <p>{msg.text}</p>
+              </div>
             </div>
-            <div className="message-bubble">
-              <p>{msg.text}</p>
-            </div>
-          </div>
-        ))}
+          )
+        })}
         <div ref={bottomRef} />
       </div>
 
@@ -278,10 +307,11 @@ function PrivateRoomPage() {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
           maxLength={1000}
-          disabled={sending}
+          autoFocus
         />
         <button
           className="room-send-btn"
+          onMouseDown={(e) => e.preventDefault()}
           onClick={sendMessage}
           disabled={!text.trim() || sending}
         >
