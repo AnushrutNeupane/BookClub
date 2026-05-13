@@ -8,13 +8,13 @@ export function extractCoverUrl(imageLinks, size = 'large') {
   if (!imageLinks) return null
   const order = size === 'large'
     ? ['extraLarge', 'large', 'medium', 'thumbnail', 'smallThumbnail']
-    : ['medium', 'thumbnail', 'smallThumbnail', 'large']
+    : ['thumbnail', 'smallThumbnail', 'medium']
   for (const key of order) {
     if (imageLinks[key]) {
       return imageLinks[key]
         .replace('http://', 'https://')
         .replace('&edge=curl', '')
-        .replace('zoom=1', 'zoom=0')
+      // intentionally NOT replacing zoom=1 — zoom=0 causes oversized partial images
     }
   }
   return null
