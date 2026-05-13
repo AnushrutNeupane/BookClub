@@ -86,9 +86,7 @@ function ProfileModal({ username, workId, onClose }) {
                 <p className="profile-modal-section-label">Library</p>
                 <div className="profile-modal-books">
                   {profile.library.slice(0, 8).map((book) => {
-                    const coverUrl = book.coverId
-                      ? `${COVER_BASE}/${book.coverId}-M.jpg`
-                      : null
+                    const coverUrl = book.coverUrl ?? null
                     const status = profile.statuses?.[book.workId]
                     const statusInfo = status ? STATUSES.find((s) => s.key === status) : null
                     const review = profile.reviews?.[book.workId]

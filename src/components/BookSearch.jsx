@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import BookGrid from './BookGrid'
+import { searchBooks } from '../utils/gbBooks'
 import './BookSearch.css'
 
 const POPULAR_SEARCHES = ['Fantasy', 'Science Fiction', 'Mystery', 'Romance', 'Horror', 'History']
@@ -11,7 +12,7 @@ function BookSearch() {
   const [error, setError] = useState(null)
   const [searched, setSearched] = useState(false)
 
-  const searchBooks = async (searchQuery) => {
+  const doSearch = async (searchQuery) => {
     const q = searchQuery ?? query
     if (!q.trim()) return
 
@@ -20,20 +21,9 @@ function BookSearch() {
     setSearched(true)
 
     try {
-      const res = await fetch(
-        `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=24&fields=key,title,author_name,number_of_pages_median,cover_i,first_publish_year`,
-        {
-          headers: {
-            'User-Agent': 'BookClub App (dev@bookclub.app)',
-          },
-        }
-      )
-
-      if (!res.ok) throw new Error('Failed to fetch books')
-
-      const data = await res.json()
-      setBooks(data.docs || [])
-    } catch (err) {
+      const results = await searchBooks(q, 24)
+      setBooks(results)
+    } catch {
       setError('Something went wrong fetching books. Please try again.')
       setBooks([])
     } finally {
@@ -43,12 +33,12 @@ function BookSearch() {
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    searchBooks()
+    doSearch()
   }
 
   const handleQuickSearch = (term) => {
     setQuery(term)
-    searchBooks(term)
+    doSearch(term)
   }
 
   return (

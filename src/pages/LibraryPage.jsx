@@ -2,11 +2,11 @@ import { useNavigate } from 'react-router-dom'
 import { useLibrary } from '../hooks/useLibrary'
 import './LibraryPage.css'
 
-const COVER_BASE = 'https://covers.openlibrary.org/b/id'
+const COVER_BASE = null // covers now stored as full URLs
 
 function LibraryBookCard({ book, onRemove }) {
   const navigate = useNavigate()
-  const coverUrl = book.coverId ? `${COVER_BASE}/${book.coverId}-M.jpg` : null
+  const coverUrl = book.coverUrl ?? null
 
   return (
     <div className="lib-card">

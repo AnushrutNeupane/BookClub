@@ -109,7 +109,7 @@ function ProfilePage() {
             <div className="profile-book-list">
               {books.map((book) => {
                 const review = reviews[book.workId]
-                const coverUrl = book.coverId ? `${COVER_BASE}/${book.coverId}-M.jpg` : null
+                const coverUrl = book.coverUrl ?? null
                 return (
                   <div
                     key={book.workId}
@@ -155,7 +155,7 @@ function ProfilePage() {
           </h2>
           <div className="profile-book-list">
             {noStatus.map((book) => {
-              const coverUrl = book.coverId ? `${COVER_BASE}/${book.coverId}-M.jpg` : null
+              const coverUrl = book.coverUrl ?? null
               return (
                 <div
                   key={book.workId}

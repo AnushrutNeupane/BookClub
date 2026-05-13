@@ -1,48 +1,26 @@
-import { cachedFetch } from './cache'
+import { fetchVolume } from './gbBooks'
 
-// Fetches minimal book metadata and adds it to the user's library if not already present.
-// Silently no-ops if the book is already in the library or if the fetch fails.
-export async function autoAddBook(workId, fallbackTitle, { isInLibrary, addBook }) {
-  if (!workId || isInLibrary(workId)) return
+// Fetches book metadata from Google Books and adds it to the library if not already present.
+export async function autoAddBook(bookId, fallbackTitle, { isInLibrary, addBook }) {
+  if (!bookId || isInLibrary(bookId)) return
 
   try {
-    const workData = await cachedFetch(
-      `https://openlibrary.org/works/${workId}.json`,
-      { headers: { 'User-Agent': 'BookClub App (dev@bookclub.app)' } }
-    )
-
-    // Resolve first author name
-    let authors = []
-    const authorRefs = workData.authors ?? []
-    if (authorRefs.length > 0) {
-      try {
-        const authorKey = authorRefs[0].author?.key
-        if (authorKey) {
-          const authorData = await cachedFetch(
-            `https://openlibrary.org${authorKey}.json`,
-            { headers: { 'User-Agent': 'BookClub App (dev@bookclub.app)' } }
-          )
-          if (authorData.name) authors = [authorData.name]
-        }
-      } catch {}
-    }
-
+    const vol = await fetchVolume(bookId)
     addBook({
-      workId,
-      title: workData.title ?? fallbackTitle ?? 'Unknown Title',
-      authors,
-      coverId: workData.covers?.[0] ?? null,
-      firstPublishYear: workData.first_publish_date ?? null,
-      pageCount: null,
+      workId: bookId,
+      title: vol.title,
+      authors: vol.author_name,
+      coverUrl: vol.coverUrl ?? null,
+      firstPublishYear: vol.first_publish_year,
+      pageCount: vol.number_of_pages_median,
     })
   } catch {
-    // If fetch fails, add with just the title we already have
-    if (!isInLibrary(workId)) {
+    if (!isInLibrary(bookId)) {
       addBook({
-        workId,
+        workId: bookId,
         title: fallbackTitle ?? 'Unknown Title',
         authors: [],
-        coverId: null,
+        coverUrl: null,
         firstPublishYear: null,
         pageCount: null,
       })

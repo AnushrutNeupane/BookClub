@@ -5,12 +5,11 @@ import { useReviews } from '../hooks/useReviews'
 import { useReadingStatus, STATUSES } from '../hooks/useReadingStatus'
 import { useUsername } from '../hooks/useUsername'
 import { usePrivateRooms, useBookRooms } from '../hooks/usePrivateRooms'
-import { cachedFetch } from '../utils/cache'
+import { fetchVolume } from '../utils/gbBooks'
 import StarRating from '../components/StarRating'
 import './BookDetailPage.css'
 
-const COVER_BASE = 'https://covers.openlibrary.org/b/id'
-const DESCRIPTION_LIMIT = 400 // characters before truncating
+const DESCRIPTION_LIMIT = 400
 
 function DescriptionBlock({ description }) {
   const [expanded, setExpanded] = useState(false)
@@ -40,18 +39,10 @@ function ReviewBlock({ workId }) {
   const [rating, setRating] = useState(existing?.rating ?? 0)
   const [text, setText] = useState(existing?.text ?? '')
 
-  // Sync if review changes externally
   useEffect(() => {
     const r = getReview(workId)
-    if (r) {
-      setRating(r.rating)
-      setText(r.text)
-      setEditing(false)
-    } else {
-      setRating(0)
-      setText('')
-      setEditing(true)
-    }
+    if (r) { setRating(r.rating); setText(r.text); setEditing(false) }
+    else { setRating(0); setText(''); setEditing(true) }
   }, [workId])
 
   const handleSave = () => {
@@ -62,15 +53,12 @@ function ReviewBlock({ workId }) {
 
   const handleDelete = () => {
     deleteReview(workId)
-    setRating(0)
-    setText('')
-    setEditing(true)
+    setRating(0); setText(''); setEditing(true)
   }
 
   return (
     <div className="review-block">
       <h2 className="section-heading">My Review</h2>
-
       {editing ? (
         <div className="review-form">
           <StarRating value={rating} onChange={setRating} size="lg" />
@@ -82,22 +70,14 @@ function ReviewBlock({ workId }) {
             rows={4}
           />
           <div className="review-form-actions">
-            <button
-              className="review-save-btn"
-              onClick={handleSave}
-              disabled={rating === 0}
-            >
+            <button className="review-save-btn" onClick={handleSave} disabled={rating === 0}>
               Save Review
             </button>
             {existing && (
-              <button className="review-cancel-btn" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
+              <button className="review-cancel-btn" onClick={() => setEditing(false)}>Cancel</button>
             )}
           </div>
-          {rating === 0 && (
-            <p className="review-hint">Select a star rating to save</p>
-          )}
+          {rating === 0 && <p className="review-hint">Select a star rating to save</p>}
         </div>
       ) : (
         <div className="review-display">
@@ -114,12 +94,12 @@ function ReviewBlock({ workId }) {
 }
 
 function BookDetailPage() {
-  const { workId } = useParams()
+  const { workId } = useParams()  // workId is now a Google Books volume ID
   const navigate = useNavigate()
   const { addBook, removeBook, isInLibrary } = useLibrary()
   const { getStatus, setStatus, clearStatus } = useReadingStatus()
   const { username } = useUsername()
-  const { myRooms, createRoom, joinByCode } = usePrivateRooms(username)
+  const { createRoom, joinByCode } = usePrivateRooms(username)
   const allBookRooms = useBookRooms(workId)
   const inLibrary = isInLibrary(workId)
   const currentStatus = getStatus(workId)
@@ -127,7 +107,6 @@ function BookDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // Private room modal state
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [roomName, setRoomName] = useState('')
@@ -135,141 +114,54 @@ function BookDetailPage() {
   const [roomActionError, setRoomActionError] = useState('')
   const [roomActionLoading, setRoomActionLoading] = useState(false)
 
-  // Split rooms: joined vs locked
   const joinedRooms = allBookRooms.filter((r) => r.members?.includes(username))
   const lockedRooms = allBookRooms.filter((r) => !r.members?.includes(username))
 
   const handleCreateRoom = async () => {
-    if (!roomName.trim()) return
-    if (!username) { setRoomActionError('Set a username first (join any discussion room to set one)'); return }
-    setRoomActionLoading(true)
-    setRoomActionError('')
+    if (!roomName.trim() || !username) {
+      setRoomActionError(!username ? 'Set a username first' : '')
+      return
+    }
+    setRoomActionLoading(true); setRoomActionError('')
     try {
       const { id } = await createRoom({ bookWorkId: workId, bookTitle: book.title, roomName: roomName.trim(), username })
-      setShowCreateModal(false)
-      setRoomName('')
+      setShowCreateModal(false); setRoomName('')
       navigate(`/private-room/${id}`)
-    } catch {
-      setRoomActionError('Failed to create room. Please try again.')
-    } finally {
-      setRoomActionLoading(false)
-    }
+    } catch { setRoomActionError('Failed to create room. Please try again.') }
+    finally { setRoomActionLoading(false) }
   }
 
   const handleJoinRoom = async () => {
-    if (!joinCode.trim()) return
-    if (!username) { setRoomActionError('Set a username first (join any discussion room to set one)'); return }
-    setRoomActionLoading(true)
-    setRoomActionError('')
+    if (!joinCode.trim() || !username) return
+    setRoomActionLoading(true); setRoomActionError('')
     try {
       const room = await joinByCode(joinCode, username)
-      setShowJoinModal(false)
-      setJoinCode('')
+      setShowJoinModal(false); setJoinCode('')
       navigate(`/private-room/${room.id}`)
-    } catch (e) {
-      setRoomActionError(e.message || 'Invalid invite code.')
-    } finally {
-      setRoomActionLoading(false)
-    }
+    } catch (e) { setRoomActionError(e.message || 'Invalid invite code.') }
+    finally { setRoomActionLoading(false) }
   }
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true); setError(null)
 
-    async function fetchBook() {
-      setLoading(true)
-      setError(null)
-
-      try {
-        // Fetch work + editions in parallel
-        const [workData, editionsData] = await Promise.all([
-          cachedFetch(`https://openlibrary.org/works/${workId}.json`,
-            { headers: { 'User-Agent': 'BookClub App (dev@bookclub.app)' } }),
-          cachedFetch(`https://openlibrary.org/works/${workId}/editions.json?limit=1`,
-            { headers: { 'User-Agent': 'BookClub App (dev@bookclub.app)' } }).catch(() => null),
-        ])
-
+    fetchVolume(workId)
+      .then((vol) => {
         if (cancelled) return
-
-        const firstEdition = editionsData?.entries?.[0]
-        const pageCount = firstEdition?.number_of_pages ?? null
-
-        const authorRefs = workData.authors ?? []
-
-        // Fetch all authors + Google Books description in parallel
-        const authorPromises = authorRefs.slice(0, 3).map((ref) => {
-          const authorKey = ref.author?.key
-          if (!authorKey) return Promise.resolve(null)
-          return cachedFetch(`https://openlibrary.org${authorKey}.json`,
-            { headers: { 'User-Agent': 'BookClub App (dev@bookclub.app)' } })
-            .then((data) => data.name ?? null)
-            .catch(() => null)
-        })
-
-        const gbPromise = (async () => {
-          try {
-            const titleForQuery = workData.title
-            const gbQuery = encodeURIComponent(titleForQuery)
-            const apiKey = import.meta.env.VITE_GOOGLE_BOOKS_API
-            const data = await cachedFetch(
-              `https://www.googleapis.com/books/v1/volumes?q=${gbQuery}&langRestrict=en&maxResults=3&fields=items(volumeInfo(description,imageLinks))&key=${apiKey}`
-            )
-            const match = data.items?.find((item) => item.volumeInfo?.description)
-            return {
-              description: match?.volumeInfo?.description ?? null,
-              coverUrl: (() => {
-                const links = match?.volumeInfo?.imageLinks
-                const raw = links?.extraLarge ?? links?.large ?? links?.medium ?? links?.thumbnail ?? null
-                if (!raw) return null
-                return raw.replace('http://', 'https://').replace('&edge=curl', '').replace('zoom=1', 'zoom=0')
-              })(),
-            }
-          } catch {
-            return { description: null, coverUrl: null }
-          }
-        })()
-
-        // Wait for everything at once
-        const results = await Promise.all([...authorPromises, gbPromise])
-
-        if (cancelled) return
-
-        const authorNames = results.slice(0, authorRefs.slice(0, 3).length).filter(Boolean)
-        const gbResult = results[results.length - 1]
-        let description = gbResult?.description ?? null
-        const gbCoverUrl = gbResult?.coverUrl ?? null
-
-        // Fall back to Open Library description
-        if (!description) {
-          const raw =
-            typeof workData.description === 'string'
-              ? workData.description
-              : workData.description?.value ?? null
-          description = raw?.trim() || null
-        }
-
-        if (!description) {
-          description = 'No description available for this book.'
-        }
-
         setBook({
-          title: workData.title,
-          description,
-          coverId: workData.covers?.[0] ?? null,
-          gbCoverUrl,
-          subjects: workData.subjects?.slice(0, 8) ?? [],
-          firstPublishYear: workData.first_publish_date ?? null,
-          pageCount,
-          authors: authorNames,
+          title: vol.title,
+          authors: vol.author_name,
+          coverUrl: vol.coverUrlLarge ?? vol.coverUrl ?? null,
+          description: vol.description ?? 'No description available for this book.',
+          firstPublishYear: vol.first_publish_year,
+          pageCount: vol.number_of_pages_median,
+          categories: vol.categories,
         })
-      } catch (err) {
-        if (!cancelled) setError('Could not load book details. Please try again.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
+      })
+      .catch(() => { if (!cancelled) setError('Could not load book details. Please try again.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
 
-    fetchBook()
     return () => { cancelled = true }
   }, [workId])
 
@@ -300,36 +192,30 @@ function BookDetailPage() {
     )
   }
 
-  // Prefer Google Books cover (higher quality), fall back to Open Library
-  const coverUrl = book.gbCoverUrl
-    ?? (book.coverId ? `${COVER_BASE}/${book.coverId}-L.jpg` : null)
-
   return (
     <div className="detail-page">
       <button className="back-btn" onClick={() => navigate(-1)}>← Back</button>
 
       <div className="detail-content">
         <div className="detail-cover-col">
-          {coverUrl ? (
-            <img src={coverUrl} alt={`Cover of ${book.title}`} className="detail-cover" />
+          {book.coverUrl ? (
+            <img src={book.coverUrl} alt={`Cover of ${book.title}`} className="detail-cover" />
           ) : (
-            <div className="detail-cover-placeholder">
-              <span>📖</span>
-            </div>
+            <div className="detail-cover-placeholder"><span>📖</span></div>
           )}
         </div>
 
         <div className="detail-info-col">
           <h1 className="detail-title">{book.title}</h1>
 
-          {book.authors.length > 0 && (
+          {book.authors?.length > 0 && (
             <p className="detail-authors">by {book.authors.join(', ')}</p>
           )}
 
           <div className="detail-meta">
-            {book.firstPublishYear && (
+            {book.firstPublishYear > 0 && (
               <div className="detail-meta-item">
-                <span className="meta-label">First Published</span>
+                <span className="meta-label">Published</span>
                 <span className="meta-value">{book.firstPublishYear}</span>
               </div>
             )}
@@ -352,7 +238,7 @@ function BookDetailPage() {
                     workId,
                     title: book.title,
                     authors: book.authors,
-                    coverId: book.coverId,
+                    coverUrl: book.coverUrl,
                     firstPublishYear: book.firstPublishYear,
                     pageCount: book.pageCount,
                   })
@@ -363,7 +249,6 @@ function BookDetailPage() {
             </button>
           </div>
 
-          {/* Reading status selector */}
           <div className="status-section">
             <h2 className="section-heading">Reading Status</h2>
             <div className="status-buttons">
@@ -380,7 +265,6 @@ function BookDetailPage() {
             </div>
           </div>
 
-          {/* Discussion rooms */}
           <div className="rooms-section">
             <h2 className="section-heading">Discussion Rooms</h2>
             <div className="room-cards">
@@ -398,7 +282,6 @@ function BookDetailPage() {
                       navigate(`/room/${workId}/${s.key}`)
                     }}
                     disabled={!canEnter}
-                    title={!currentStatus ? 'Set a reading status to join a room' : !canEnter ? `Only available to ${s.label} readers` : ''}
                   >
                     <span className="room-card-emoji">{s.emoji}</span>
                     <span className="room-card-label">{s.label}</span>
@@ -409,25 +292,17 @@ function BookDetailPage() {
                 )
               })}
             </div>
-            {!currentStatus && (
-              <p className="rooms-hint">Set a reading status above to join a discussion room.</p>
-            )}
+            {!currentStatus && <p className="rooms-hint">Set a reading status above to join a discussion room.</p>}
           </div>
 
           <DescriptionBlock description={book.description} />
 
-          {/* Private rooms */}
           <div className="rooms-section">
             <h2 className="section-heading">Private Rooms</h2>
-
             {joinedRooms.length > 0 && (
               <div className="private-room-list">
                 {joinedRooms.map((room) => (
-                  <button
-                    key={room.id}
-                    className="private-room-row"
-                    onClick={() => navigate(`/private-room/${room.id}`)}
-                  >
+                  <button key={room.id} className="private-room-row" onClick={() => navigate(`/private-room/${room.id}`)}>
                     <span className="private-room-icon">🔒</span>
                     <span className="private-room-name">{room.name}</span>
                     <span className="private-room-members">{room.members?.length ?? 1} member{room.members?.length !== 1 ? 's' : ''}</span>
@@ -436,7 +311,6 @@ function BookDetailPage() {
                 ))}
               </div>
             )}
-
             {lockedRooms.length > 0 && (
               <div className="private-room-list">
                 {lockedRooms.map((room) => (
@@ -449,7 +323,6 @@ function BookDetailPage() {
                 ))}
               </div>
             )}
-
             <div className="private-room-actions">
               <button className="private-room-btn" onClick={() => { setShowCreateModal(true); setRoomActionError('') }}>
                 + Create Private Room
@@ -464,21 +337,13 @@ function BookDetailPage() {
         </div>
       </div>
 
-      {/* Create private room modal */}
       {showCreateModal && (
         <div className="username-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="username-modal" onClick={(e) => e.stopPropagation()}>
             <h2>Create Private Room</h2>
             <p>Give your room a name. Share the invite code with friends.</p>
-            <input
-              className="username-input"
-              placeholder="Room name (e.g. Book Club with Friends)"
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateRoom()}
-              autoFocus
-              maxLength={48}
-            />
+            <input className="username-input" placeholder="Room name" value={roomName}
+              onChange={(e) => setRoomName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateRoom()} autoFocus maxLength={48} />
             {roomActionError && <p className="room-action-error">{roomActionError}</p>}
             <button className="username-save-btn" onClick={handleCreateRoom} disabled={!roomName.trim() || roomActionLoading}>
               {roomActionLoading ? 'Creating…' : 'Create Room'}
@@ -488,22 +353,14 @@ function BookDetailPage() {
         </div>
       )}
 
-      {/* Join private room modal */}
       {showJoinModal && (
         <div className="username-overlay" onClick={() => setShowJoinModal(false)}>
           <div className="username-modal" onClick={(e) => e.stopPropagation()}>
             <h2>Join Private Room</h2>
             <p>Enter the 6-character invite code shared with you.</p>
-            <input
-              className="username-input"
-              placeholder="Invite code (e.g. XK9F2A)"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-              onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
-              autoFocus
-              maxLength={6}
-              style={{ letterSpacing: '3px', fontFamily: 'monospace', fontSize: '1.2rem' }}
-            />
+            <input className="username-input" placeholder="Invite code" value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
+              autoFocus maxLength={6} style={{ letterSpacing: '3px', fontFamily: 'monospace', fontSize: '1.2rem' }} />
             {roomActionError && <p className="room-action-error">{roomActionError}</p>}
             <button className="username-save-btn" onClick={handleJoinRoom} disabled={joinCode.length < 6 || roomActionLoading}>
               {roomActionLoading ? 'Joining…' : 'Join Room'}
